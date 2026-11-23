@@ -26,6 +26,7 @@ const LABS = [
  ['lac', '乳酸（mmol/L）', v => v >= 4 ? ['crit', '乳酸著明高値（ショック・腸管虚血）'] : v > 2 ? ['warn', '乳酸高値'] : null]
 ];
 const QUAL = [['trop', 'トロポニン', ['陰性', '陽性']], ['dd', 'D-ダイマー', ['基準値内', '高値']]];
+const JCS = ['0', '1', '2', '3', '10', '20', '30', '100', '200', '300'];
 const ECG_F = ['洞調律・著変なし', 'ST上昇', 'ST低下・陰性T', '新たな左脚ブロック', '心房細動', '房室ブロック', '洞性頻脈', '洞性徐脈', 'QRS延長', '心室性期外収縮の多発'];
 
 /* ================= 状態 ================= */
@@ -44,7 +45,7 @@ function sample() {
  e.sym = ['fever']; e.chk = {'fever:ask': ['咳・痰の増加、むせ'], 'fever:stay': ['血圧・意識が保たれている']};
  return e;
 }
-function load(e) { E = e; ['vit', 'sym', 'needs'].forEach(k => { if (!Array.isArray(E[k])) E[k] = []; }); ['p', 'chk', 'ddx', 'tests', 'labs', 'dec', 'ref'].forEach(k => { E[k] = E[k] || {}; }); E.ecg = E.ecg || {f: []}; }
+function load(e) { E = e; ['vit', 'sym', 'needs', 'neuro'].forEach(k => { if (!Array.isArray(E[k])) E[k] = []; }); ['p', 'chk', 'ddx', 'tests', 'labs', 'dec', 'ref'].forEach(k => { E[k] = E[k] || {}; }); E.ecg = E.ecg || {f: []}; }
 
 /* ================= ユーティリティ ================= */
 const $ = s => document.querySelector(s);
@@ -117,6 +118,7 @@ function decide() {
   if (night) chk(k + ':night').forEach(t => up(2, s.n + '（夜間・検査できず）：' + t));
  });
  labFlags().forEach(([l, t]) => { if (l === 'crit') up(2, t); });
+ if (E.sym.includes('head')) neuroFlags().forEach(t => up(3, t));
  E.needs.forEach(t => up(2, '院内で困難な処置が必要：' + t));
  /* 院内継続の条件 */
  E.sym.forEach(k => { const s = SYM[k], c = chk(k + ':stay'); if (c.length && c.length === s.stay.length && R.lv <= 1) R.notes.push(['ok', s.n + '：院内継続の条件をすべて満たしています']); });
@@ -198,12 +200,36 @@ function stepSymptoms() {
   ${grp('搬送・転院を相談', k + ':consult', s.consult, 'amb', 'y')}
   ${night ? `<div class="alert a-night"><b>夜間の判断</b><br>${esc(NIGHT[k].text)}</div>${grp('夜間は検査で否定できないため搬送を相談', k + ':night', NIGHT[k].consult, 'amb', 'y')}` : ''}
   ${grp('院内で継続する条件（すべて満たすのが目安）', k + ':stay', s.stay, 'grn', 'gr')}
+  ${k === 'head' ? neuroHTML() : ''}
   <p class="note">再評価：${esc(s.recheck)}</p></div>`;
  });
  return h;
 }
+function neuroHTML() {
+ const n = E.neuro, fl = neuroFlags();
+ let h = `<div class="grp"><div class="g">神経観察表（最初の2時間は30分ごと、次の2時間は1時間ごと、以後2〜4時間ごと）</div>`;
+ if (n.length) h += `<div class="scroll"><table class="vt"><thead><tr><th>時刻</th><th>JCS</th><th>瞳孔</th><th>対光反射</th><th>麻痺</th><th>嘔吐</th><th>頭痛</th><th></th></tr></thead><tbody>` +
+  n.map((x, i) => `<tr><td><input type="datetime-local" data-nin="${i}:t" value="${esc(x.t)}" style="width:9.5em;padding:3px;font-size:13px"></td>` +
+   `<td><select data-nin="${i}:jcs" style="padding:3px;font-size:13px">${JCS.map(j => `<option${x.jcs === j ? ' selected' : ''}>${j}</option>`).join('')}</select></td>` +
+   [['pupil', ['同大', '不同']], ['light', ['あり', '鈍い・なし']], ['palsy', ['なし', 'あり']], ['vomit', ['なし', 'あり']], ['ha', ['なし', 'あり']]].map(([k, o]) =>
+    `<td><select data-nin="${i}:${k}" style="padding:3px;font-size:13px">${o.map(v => `<option${x[k] === v ? ' selected' : ''}>${v}</option>`).join('')}</select></td>`).join('') +
+   `<td><button type="button" class="del" data-act="delNeuro" data-i="${i}" aria-label="削除">×</button></td></tr>`).join('') + '</tbody></table></div>';
+ h += `<div class="rowbtns"><button type="button" class="lnk" data-act="addNeuro">＋ 今の時刻で観察を記録</button></div>`;
+ h += `<div id="calc-neuro">${fl.length ? fl.map(t => `<div class="alert a-crit">${esc(t)}</div>`).join('') : n.length ? '<p class="note">悪化の所見はありません。</p>' : ''}</div></div>`;
+ return h;
+}
+function neuroFlags() {
+ const n = E.neuro || [], out = []; if (!n.length) return out;
+ const j0 = +n[0].jcs || 0, last = n[n.length - 1];
+ if (+last.jcs > j0) out.push('神経観察：意識の悪化（JCS ' + n[0].jcs + ' → ' + last.jcs + '）');
+ if (n.some(x => x.pupil === '不同')) out.push('神経観察：瞳孔不同');
+ if (n.some(x => x.light === '鈍い・なし')) out.push('神経観察：対光反射の低下');
+ if (n.some(x => x.palsy === 'あり')) out.push('神経観察：麻痺');
+ if (n.filter(x => x.vomit === 'あり').length >= 2) out.push('神経観察：2回以上の嘔吐');
+ return out;
+}
 function grp(title, key, items, cls, gc) { return `<div class="grp"><div class="g ${gc || ''}">${esc(title)}</div>${chips('chk:' + key, items, E.chk[key], cls)}</div>`; }
-function symLv(k) { return chk(k + ':red').length ? 3 : (chk(k + ':consult').length || (isNight() && chk(k + ':night').length)) ? 2 : chk(k + ':stay').length === SYM[k].stay.length ? 1 : 0; }
+function symLv(k) { return (chk(k + ':red').length || (k === 'head' && neuroFlags().length)) ? 3 : (chk(k + ':consult').length || (isNight() && chk(k + ':night').length)) ? 2 : chk(k + ':stay').length === SYM[k].stay.length ? 1 : 0; }
 function symLvTxt(k) { return ['評価中', '院内継続の条件を満たす', '搬送を相談', 'すぐ搬送を検討'][symLv(k)]; }
 const lvPill = l => ['p-none', 'p-ok', 'p-warn', 'p-crit'][l];
 function stepTests() {
@@ -288,11 +314,12 @@ function symNames() { return E.sym.map(k => SYM[k].n).join('、'); }
 function sbar() {
  const p = E.p, R = decide(), v = lastV(), L = [];
  L.push('【SBAR報告】' + (p.ward ? p.ward + ' ' : '') + E.id);
- L.push('S（状況）：' + [p.age ? p.age + '歳' : '', p.sex || ''].join(' ') + '。' + (symNames() || '症状') + '。' + (v ? '最新 ' + vitLine(v) : ''));
+ L.push('S（状況）：' + ([p.age ? p.age + '歳' : '', p.sex || ''].filter(Boolean).join(' ') ? [p.age ? p.age + '歳' : '', p.sex || ''].filter(Boolean).join(' ') + '。' : '') + (symNames() || '症状') + '。' + (v ? '最新 ' + vitLine(v) : ''));
  const bg = [p.dx, p.adm, arr(p.st).join('・'), arr(p.meds).length ? '服薬：' + arr(p.meds).join('・') : '', p.base ? '普段：' + p.base : '', p.cpr ? 'ACP：' + p.cpr + '／' + (p.wish || '意向未確認') : ''].filter(Boolean);
  L.push('B（背景）：' + bg.join('。'));
  const a = []; E.sym.forEach(k => { const r = chk(k + ':red'), c = chk(k + ':consult'), ask = chk(k + ':ask'); if (ask.length) a.push(SYM[k].n + '：' + ask.join('、')); if (r.length) a.push('レッドフラッグ：' + r.join('、')); if (c.length) a.push('相談事項：' + c.join('、')); });
  labFlags().forEach(([, t]) => a.push(t));
+ if (E.sym.includes('head')) { const nl = neuroLines(); if (nl.length) a.push('神経観察（最新）：' + nl[nl.length - 1]); neuroFlags().forEach(t => a.push(t)); }
  if (R.N) a.push('NEWS2 ' + R.N.total + '点、qSOFA ' + R.N.qsofa + '点');
  L.push('A（評価）：' + (a.join('。') || '評価中'));
  L.push('R（依頼）：' + (R.lv >= 3 ? 'すぐに診察してください。搬送を検討しています。' : R.lv === 2 ? '診察と、搬送・転院の判断をお願いします。' : '診察と今後の指示をお願いします。') + (p.acts ? '　実施済み：' + p.acts.replace(/\n/g, '、') : ''));
@@ -307,6 +334,7 @@ function referral() {
  E.vit.forEach(x => L.push('・' + vitLine(x)));
  const fs = []; E.sym.forEach(k => { const t = [...chk(k + ':ask'), ...chk(k + ':red'), ...chk(k + ':consult')]; if (t.length) fs.push(SYM[k].n + '：' + t.join('、')); });
  if (fs.length) { L.push(''); L.push('■ 所見'); fs.forEach(x => L.push('・' + x)); }
+ if ((E.neuro || []).length) { L.push(''); L.push('■ 神経所見の推移'); neuroLines().forEach(x => L.push('・' + x)); }
  const lf = labFlags(), lab = LABS.filter(([k]) => num(E.labs[k]) != null).map(([k, l]) => l.split('（')[0] + ' ' + E.labs[k]);
  if (lab.length || E.ecg.qtc || arr(E.ecg.f).length || p.img) { L.push(''); L.push('■ 検査'); if (lab.length) L.push('・血液：' + lab.join('、')); if (E.ecg.qtc || arr(E.ecg.f).length) L.push('・心電図：' + [E.ecg.qtc ? 'QTc ' + E.ecg.qtc + 'ms' : '', ...arr(E.ecg.f)].filter(Boolean).join('、')); if (p.img) L.push('・その他：' + p.img.replace(/\n/g, ' ')); }
  if (isNight()) { const na = ['b', 'e', 'x', 'c'].filter(k => !avail(k)).map(k => TEST_KINDS[k]); if (na.length) L.push('・夜間のため当院では実施できない検査：' + na.join('、')); }
@@ -350,6 +378,7 @@ function narrative() {
  out.push((reason.length ? reason.join('、') + '、' : '') + '貴院にて' + pur + 'をお願いしたく、ご紹介申し上げます。');
  return out.join('');
 }
+function neuroLines() { return (E.neuro || []).map(x => `${fmtT(x.t)} JCS ${x.jcs}、瞳孔${x.pupil}、対光反射${x.light}、麻痺${x.palsy}、嘔吐${x.vomit}、頭痛${x.ha}`); }
 function letter() {
  const p = E.p, f = DB.fac || {}, r = E.ref, L = [];
  const dx = (r.dx && r.dx.trim() ? r.dx.trim().split(/\n+/) : autoDx());
@@ -369,6 +398,7 @@ function letter() {
  L.push('');
  L.push('【経過】'); L.push(narrative());
  if (E.vit.length > 1) { L.push(''); L.push('【バイタルの推移】'); E.vit.forEach(x => L.push('・' + vitLine(x))); }
+ if ((E.neuro || []).length) { L.push(''); L.push('【神経所見の推移】'); neuroLines().forEach(x => L.push('・' + x)); }
  const lab = LABS.filter(([k]) => num(E.labs[k]) != null).map(([k, l]) => l.split('（')[0] + ' ' + E.labs[k] + ((l.match(/（(.+)）/) || [])[1] || ''));
  const tests = [];
  if (lab.length) tests.push('血液：' + lab.join('、'));
@@ -464,6 +494,8 @@ document.addEventListener('click', ev => {
   case 'prev': go(step - 1); break;
   case 'goto': go(+d.i); break;
   case 'addVit': { const l = lastV(); E.vit.push({t: nowLocal(), o2: l ? l.o2 : '', o2l: l ? l.o2l : '', scale2: l ? l.scale2 : false}); changed(true); break; }
+  case 'addNeuro': { const l = E.neuro[E.neuro.length - 1]; E.neuro.push({t: nowLocal(), jcs: l ? l.jcs : '0', pupil: '同大', light: 'あり', palsy: 'なし', vomit: 'なし', ha: 'なし'}); changed(true); break; }
+  case 'delNeuro': E.neuro.splice(+d.i, 1); changed(true); break;
   case 'delVit': E.vit.splice(+d.i, 1); changed(true); break;
   case 'report': showReport(); break;
   case 'rep': showReport(d.k); break;
@@ -483,6 +515,7 @@ document.addEventListener('input', ev => {
  const t = ev.target, d = t.dataset;
  if (d.fac) { DB.fac = DB.fac || {}; DB.fac[d.fac] = t.value; save(); return; }
  if (d.in) { setP(d.in, t.value); changed(false); }
+ else if (d.nin) { const [i, k] = d.nin.split(':'); E.neuro[i][k] = t.value; save(); const c = $('#calc-neuro'); if (c) { const fl = neuroFlags(); c.innerHTML = fl.length ? fl.map(x => `<div class="alert a-crit">${esc(x)}</div>`).join('') : '<p class="note">悪化の所見はありません。</p>'; } refresh(); }
  else if (d.vin) { const [i, k] = d.vin.split(':'); E.vit[i][k] = t.value; changed(false); }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#modal').hidden) close(); });

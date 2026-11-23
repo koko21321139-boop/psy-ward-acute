@@ -51,7 +51,7 @@ def out(ws, ref, val, bold=True, fill=F_OUT):
 
 MAIN = '急変シート'
 SHEETS = {}   # k -> (sheet name, refs)
-SHORT = {'fever':'発熱','resp':'呼吸困難','cons':'意識障害','chest':'胸痛','abd':'腹痛・イレウス','fall':'転倒・頭部打撲','seiz':'けいれん','shock':'ショック','arrh':'不整脈・失神','gib':'消化管出血','glu':'血糖異常','intake':'摂取不良・脱水','nms':'悪性症候群','water':'水中毒・低Na','choke':'窒息・誤嚥','dvt':'下肢腫脹DVT','urine':'尿閉・乏尿','od':'過量服薬・誤飲'}
+SHORT = {'fever':'発熱','resp':'呼吸困難','cons':'意識障害','chest':'胸痛','abd':'腹痛・イレウス','head':'頭部打撲','fall':'転倒・外傷','seiz':'けいれん','shock':'ショック','arrh':'不整脈・失神','gib':'消化管出血','glu':'血糖異常','intake':'摂取不良・脱水','nms':'悪性症候群','water':'水中毒・低Na','choke':'窒息・誤嚥','dvt':'下肢腫脹DVT','urine':'尿閉・乏尿','od':'過量服薬・誤飲'}
 
 # ================= メインシート =================
 M = wb.create_sheet(MAIN); dvm = DV(M)
@@ -256,6 +256,16 @@ def build_sym(s, kinds):
     r += 1
     group('初期対応（実施したらA列に✓）', 'mgmt', s['mgmt'], F_SUB)
     ws.cell(r, 1, '再評価').font = ft(bold=True); ws.cell(r, 2, s['recheck']).font = ft(); ws.cell(r, 2).alignment = WRAP; ws.merge_cells(f'B{r}:F{r}')
+    if s['k'] == 'head':
+        r += 2; head(ws, r, '神経観察表（最初の2時間は30分ごと、次の2時間は1時間ごと、以後2〜4時間ごとに24時間）', 6, big=False); r += 1
+        for i, h in enumerate(['時刻', 'JCS', '瞳孔', '対光反射', '麻痺・嘔吐・頭痛', 'メモ']):
+            c = ws.cell(r, i + 1, h); c.font = ft(bold=True, size=9, color='FFFFFF'); c.fill = F_HEAD; c.alignment = CEN
+        r += 1; a0 = r
+        for i in range(12):
+            for col in 'ABCDEF': inp(ws, f'{col}{r}')
+            ws[f'A{r}'].number_format = 'h:mm'
+            dv.add(['0', '1', '2', '3', '10', '20', '30', '100', '200', '300'], f'B{r}'); dv.add(['同大', '不同'], f'C{r}'); dv.add(['あり', '鈍い・なし'], f'D{r}'); r += 1
+        ws.cell(r, 2, '意識の悪化（JCSが上がる）・瞳孔不同・対光反射の低下・新たな麻痺・2回以上の嘔吐は、すぐに医師へ報告し搬送を検討').font = ft(size=9, color='B3261E'); ws.merge_cells(f'B{r}:F{r}')
     # 状態
     nightOn = f'{MAIN_MODE}="夜間"'
     st = (f'=IF({SR["redN"]}>0,"すぐ搬送を検討（レッドフラッグ "&{SR["redN"]}&"項目）",IF(OR({SR["consultN"]}>0,AND({nightOn},{SR["nightN"]}>0)),"搬送を相談",'

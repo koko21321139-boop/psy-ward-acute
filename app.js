@@ -5,6 +5,7 @@ const ADM = ['任意入院', '医療保護入院', '措置入院', '応急入院
 const CPR = ['心肺蘇生を希望（フルコード）', 'DNAR（心肺蘇生をしない）', '未確認'];
 const WISH = ['搬送を含め積極的な治療を希望', '院内でできる範囲の治療を希望', '苦痛の緩和を中心に', '未確認'];
 const DDX_ST = ['可能性高い', '保留', '否定的'];
+const PURPOSES = ['精査・加療のお願い', '救急での診察・加療のお願い', '入院加療のお願い', '外来受診のお願い'];
 const DECISIONS = ['救急搬送（119番）', '救急病院へ直接連絡して搬送', '当日中の転院・受診を相談', '院内で治療を継続（再評価）', '院内で緩和ケア・看取り'];
 const STEP_T = [['背景', '患者の背景・普段の状態・本人と家族の意向'], ['バイタル', 'バイタルを記録するとNEWS2を自動計算'], ['症候', '症候ごとのレッドフラッグと搬送基準'], ['検査', 'この時間帯にできる検査と結果'], ['鑑別', '高齢者・認知症・向精神薬を踏まえた鑑別'], ['初期対応', '院内でできる初期対応'], ['判断', '搬送か院内継続か'], ['記録', '判断と連絡の記録']];
 const LABS = [
@@ -29,7 +30,7 @@ const ECG_F = ['洞調律・著変なし', 'ST上昇', 'ST低下・陰性T', '�
 
 /* ================= 状態 ================= */
 const LS = 'psyacute.v1';
-let DB = {eps: {}, cur: null, step: 0, mode: 'auto', avail: {day: {s: 1, b: 1, e: 1, x: 1, c: 1}, night: {s: 1}}};
+let DB = {eps: {}, cur: null, step: 0, mode: 'auto', fac: {}, avail: {day: {s: 1, b: 1, e: 1, x: 1, c: 1}, night: {s: 1}}};
 try { const r = localStorage.getItem(LS); if (r) DB = Object.assign(DB, JSON.parse(r)); } catch (e) {}
 let E = null, step = DB.step || 0, delArm = null;
 const save = () => { if (E) { E.updated = new Date().toISOString(); DB.eps[E.id] = E; DB.cur = E.id; } DB.step = step; try { localStorage.setItem(LS, JSON.stringify(DB)); } catch (e) {} };
@@ -43,7 +44,7 @@ function sample() {
  e.sym = ['fever']; e.chk = {'fever:ask': ['咳・痰の増加、むせ'], 'fever:stay': ['血圧・意識が保たれている']};
  return e;
 }
-function load(e) { E = e; ['vit', 'sym', 'needs'].forEach(k => { if (!Array.isArray(E[k])) E[k] = []; }); ['p', 'chk', 'ddx', 'tests', 'labs', 'dec'].forEach(k => { E[k] = E[k] || {}; }); E.ecg = E.ecg || {f: []}; }
+function load(e) { E = e; ['vit', 'sym', 'needs'].forEach(k => { if (!Array.isArray(E[k])) E[k] = []; }); ['p', 'chk', 'ddx', 'tests', 'labs', 'dec', 'ref'].forEach(k => { E[k] = E[k] || {}; }); E.ecg = E.ecg || {f: []}; }
 
 /* ================= ユーティリティ ================= */
 const $ = s => document.querySelector(s);
@@ -246,7 +247,13 @@ function stepRecord() {
  const d = E.dec;
  return block('判断', W(`<div class="lab">決定</div>${seg('dec.choice', DECISIONS, d.choice)}`) + fld('dec.by', '判断した医師', 'text') + fld('dec.time', '判断の時刻', 'datetime-local'))
  + block('連絡・搬送', fld('dec.dest', '搬送先・相談先（病院名・診療科・担当医）', 'text') + fld('dec.call', '連絡の時刻と内容', 'ta', 2) + fld('dec.family', '家族への連絡（時刻・相手・説明内容・意向）', 'ta', 2))
- + block('院内で継続する場合', fld('dec.recheck', '次の再評価（時刻と項目）', 'text') + fld('dec.switch', '搬送に切り替える基準（看護師と共有）', 'ta', 2) + fld('dec.order', '指示内容', 'ta', 3));
+ + block('院内で継続する場合', fld('dec.recheck', '次の再評価（時刻と項目）', 'text') + fld('dec.switch', '搬送に切り替える基準（看護師と共有）', 'ta', 2) + fld('dec.order', '指示内容', 'ta', 3))
+ + block('紹介状（診療情報提供書）', fld('ref.to', '紹介先の医療機関', 'text') + fld('ref.dept', '診療科', 'text') + fld('ref.doc', '担当医（空欄なら「ご担当」）', 'text')
+   + W(`<div class="lab">紹介の目的</div>${seg('ref.purpose', PURPOSES, E.ref.purpose)}`)
+   + fld('ref.dx', '傷病名（空欄なら鑑別の「可能性高い」から自動で入れます）', 'ta', 3)
+   + W(`<p class="note">自動の候補：${esc(autoDx().join('、') || '（鑑別で「可能性高い」を選ぶと表示）')}</p>`)
+   + fld('ref.extra', 'その他の連絡事項（付き添い・家族の来院予定など）', 'ta', 2)
+   + W(`<div class="rowbtns"><button type="button" class="hb code" data-act="rep" data-k="letter">紹介状を作成</button><button type="button" class="hb" data-act="settings">施設の情報を登録</button></div>${DB.fac.name ? '' : '<p class="note">紹介元（病院名・住所・電話）は「施設の情報を登録」で一度入れておくと、毎回自動で入ります。</p>'}`));
 }
 const STEPS = [stepBackground, stepVitals, stepSymptoms, stepTests, stepDdx, stepAction, stepDecision, stepRecord];
 
@@ -318,6 +325,71 @@ function referral() {
  L.push('■ 当院の連絡先：（記入）　担当医：' + (E.dec.by || '（記入）'));
  return L.join('\n');
 }
+/* ---- 紹介状 ---- */
+const jpDate = d => d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日';
+const jpDT = t => { if (!t) return ''; const m = t.match(/(\d+)-(\d+)-(\d+)T(\d+):(\d+)/); return m ? (+m[2]) + '月' + (+m[3]) + '日' + (+m[4]) + '時' + m[5] + '分' : t; };
+function highDdx() { const hi = []; E.sym.forEach(k => SYM[k].ddx.forEach(([n], i) => { if (E.ddx[k + ':' + i] === '可能性高い' && !hi.includes(n)) hi.push(n); })); return hi; }
+function autoDx() { const hi = highDdx(); return hi.length ? hi.map(n => n.split('・')[0].replace(/（.*?）/g, '') + 'の疑い') : E.sym.map(k => SYM[k].n); }
+function vShort(x) { return `体温${x.temp || '-'}℃、心拍${x.hr || '-'}/分、血圧${x.sbp || '-'}/${x.dbp || '-'}mmHg、呼吸数${x.rr || '-'}/分、SpO2 ${x.spo2 || '-'}%（${x.o2 === '酸素' ? '酸素' + (x.o2l ? x.o2l + 'L' : '') + '投与下' : '室内気'}）、意識 ${x.avpu ? x.avpu.replace(/^\S+\s/, '') : '-'}`; }
+function narrative() {
+ const v = E.vit, R = decide(), out = [];
+ const s = symNames();
+ out.push((v[0] && v[0].t ? jpDT(v[0].t) + '頃より、' : '') + (s || '身体症状') + 'を認めました。');
+ const asks = []; E.sym.forEach(k => chk(k + ':ask').forEach(t => asks.push(t)));
+ if (asks.length) out.push('所見として、' + asks.join('、') + 'がみられます。');
+ if (v.length) out.push('バイタルサインは' + vShort(v[0]) + (v.length > 1 ? 'でしたが、' + jpDT(v[v.length - 1].t) + 'には' + vShort(v[v.length - 1]) + 'となっています（NEWS2 ' + news2(v[0]).total + '点→' + news2(v[v.length - 1]).total + '点）。' : '（NEWS2 ' + news2(v[0]).total + '点）でした。'));
+ const reds = []; E.sym.forEach(k => chk(k + ':red').forEach(t => reds.push(t)));
+ if (reds.length) out.push('また、' + reds.join('、') + 'を認めます。');
+ const lf = labFlags().filter(x => x[0] !== 'info').map(x => x[1]); if (lf.length) out.push('検査では' + lf.join('、') + 'を認めました。');
+ const hi = highDdx(); if (hi.length) out.push(hi.join('、') + 'を疑っております。');
+ const reason = [];
+ if (isNight()) { const na = ['b', 'e', 'x', 'c'].filter(k => !avail(k)).map(k => TEST_KINDS[k].replace('12誘導', '')); if (na.length) reason.push('夜間のため当院では' + na.join('・') + 'が実施できず'); }
+ if (E.needs.length) reason.push(E.needs.join('・') + 'が必要と考えられ');
+ if (!reason.length && R.lv >= 2) reason.push('当院での治療継続は困難と判断し');
+ const pur = {'精査・加療のお願い': 'ご精査・ご加療', '救急での診察・加療のお願い': '救急でのご診察・ご加療', '入院加療のお願い': '入院でのご加療', '外来受診のお願い': '外来でのご診察'}[E.ref.purpose || PURPOSES[0]];
+ out.push((reason.length ? reason.join('、') + '、' : '') + '貴院にて' + pur + 'をお願いしたく、ご紹介申し上げます。');
+ return out.join('');
+}
+function letter() {
+ const p = E.p, f = DB.fac || {}, r = E.ref, L = [];
+ const dx = (r.dx && r.dx.trim() ? r.dx.trim().split(/\n+/) : autoDx());
+ L.push('診療情報提供書（紹介状）'); L.push(''); L.push('　　　　　　　　　　　　　　　　' + jpDate(new Date()));
+ L.push((r.to || '（紹介先医療機関）')); L.push((r.dept ? r.dept + '　' : '') + (r.doc ? r.doc + ' 先生' : 'ご担当 先生') + '　御侍史');
+ L.push('');
+ L.push('紹介元：' + (f.name || '（医療機関名）')); if (f.addr) L.push('　　　　' + f.addr); L.push('　　　　電話 ' + (f.tel || '（電話）') + (f.fax ? '　FAX ' + f.fax : ''));
+ L.push('　　　　医師 ' + (E.dec.by || '（医師名）'));
+ L.push('');
+ L.push('患者：（氏名）　' + (p.age ? p.age + '歳' : '') + '　' + (p.sex || '') + '　（生年月日）　当院ID：' + E.id);
+ L.push('');
+ L.push('傷病名：'); dx.forEach(d => L.push('　' + d)); if (p.dx) L.push('　（基礎疾患）' + p.dx);
+ L.push('紹介目的：' + (r.purpose || PURPOSES[0]));
+ L.push('');
+ L.push('拝啓　平素より大変お世話になっております。');
+ L.push('当院' + (p.adm ? 'に' + p.adm.replace('入院', '') + '入院中' : '入院中') + 'の患者様について、ご紹介申し上げます。');
+ L.push('');
+ L.push('【経過】'); L.push(narrative());
+ if (E.vit.length > 1) { L.push(''); L.push('【バイタルの推移】'); E.vit.forEach(x => L.push('・' + vitLine(x))); }
+ const lab = LABS.filter(([k]) => num(E.labs[k]) != null).map(([k, l]) => l.split('（')[0] + ' ' + E.labs[k] + ((l.match(/（(.+)）/) || [])[1] || ''));
+ const tests = [];
+ if (lab.length) tests.push('血液：' + lab.join('、'));
+ if (E.labs.trop) tests.push('トロポニン ' + E.labs.trop); if (E.labs.dd) tests.push('D-ダイマー ' + E.labs.dd);
+ if (E.ecg.qtc || arr(E.ecg.f).length) tests.push('心電図：' + [E.ecg.qtc ? 'QTc ' + E.ecg.qtc + 'ms' : '', ...arr(E.ecg.f)].filter(Boolean).join('、'));
+ if (p.img) tests.push(p.img.replace(/\n/g, ' '));
+ if (isNight()) { const na = ['b', 'e', 'x', 'c'].filter(k => !avail(k)).map(k => TEST_KINDS[k]); if (na.length && !lab.length) tests.push('夜間のため' + na.join('・') + 'は未実施'); }
+ if (tests.length) { L.push(''); L.push('【検査所見】'); tests.forEach(t => L.push('・' + t)); }
+ if (p.acts) { L.push(''); L.push('【当院での処置】'); L.push(p.acts); }
+ L.push(''); L.push('【既往歴・身体の状態】'); L.push([arr(p.st).join('、'), p.phx].filter(Boolean).join('、') || '特記なし');
+ if (p.base) L.push('普段の状態：' + p.base.replace(/\n/g, ' '));
+ L.push(''); L.push('【精神科的な情報】'); L.push('診断：' + (p.dx || '') + (p.adm ? '（' + p.adm + '）' : ''));
+ if (p.psy) L.push('留意点：' + p.psy.replace(/\n/g, ' '));
+ L.push(''); L.push('【現在の処方】'); L.push(p.medsText || (arr(p.meds).length ? arr(p.meds).join('、') + '（詳細は別紙）' : '別紙のとおり'));
+ L.push('アレルギー：' + (p.allergy || '特記なし'));
+ L.push(''); L.push('【ご本人・ご家族の意向】'); L.push([p.cpr, p.wish].filter(x => x && x !== '未確認').join('。') || '未確認'); if (p.kp) L.push('キーパーソン：' + p.kp);
+ if (r.extra || E.dec.family) { L.push(''); L.push('【連絡事項】'); if (E.dec.family) L.push(E.dec.family); if (r.extra) L.push(r.extra); }
+ L.push(''); L.push('お忙しいところ恐縮ですが、ご高診のほどよろしくお願い申し上げます。'); L.push('　　　　　　　　　　　　　　　　　　　　　　　　敬具');
+ L.push(''); L.push('（精神症状や入院形態に関するご質問、加療後の受け入れについては、当院までご連絡ください）');
+ return L.join('\n');
+}
 function chart() {
  const p = E.p, R = decide(), L = [];
  L.push('【身体急変 記録】' + E.id + '　' + (symNames() || ''));
@@ -335,11 +407,11 @@ const open = h => { $('#panel').innerHTML = h; $('#modal').hidden = false; };
 const close = () => { $('#modal').hidden = true; delArm = null; };
 function showReport(kind) {
  kind = kind || 'sbar';
- const t = kind === 'sbar' ? sbar() : kind === 'ref' ? referral() : chart();
- open(`<h3>報告・転院用の文書</h3><div class="opts">${[['sbar', 'SBAR報告（看護師→医師）'], ['ref', '診療情報提供（転院依頼）'], ['chart', 'カルテ記録（SOAP）']].map(([k, l]) => `<button type="button" class="opt" data-act="rep" data-k="${k}" aria-pressed="${kind === k}">${l}</button>`).join('')}</div>
- <textarea class="out" id="outText" readonly>${esc(t)}</textarea>
- <div class="rowbtns"><button type="button" class="hb code" data-act="copy">コピー</button><button type="button" class="hb" data-act="close">閉じる</button><span class="note" id="cmsg" role="status"></span></div>
- <p class="note">（記入）の部分は貼り付け後に書き足してください。</p>`);
+ const t = kind === 'sbar' ? sbar() : kind === 'letter' ? letter() : kind === 'ref' ? referral() : chart();
+ open(`<h3 class="noprint">報告・転院用の文書</h3><div class="opts noprint">${[['sbar', 'SBAR報告（看護師→医師）'], ['letter', '紹介状'], ['ref', '情報提供（箇条書き）'], ['chart', 'カルテ記録（SOAP）']].map(([k, l]) => `<button type="button" class="opt" data-act="rep" data-k="${k}" aria-pressed="${kind === k}">${l}</button>`).join('')}</div>
+ <textarea class="out" id="outText" readonly>${esc(t)}</textarea><div class="letter">${esc(t)}</div>
+ <div class="rowbtns noprint"><button type="button" class="hb code" data-act="copy">コピー</button>${kind === 'letter' ? '<button type="button" class="hb" data-act="print">印刷</button>' : ''}<button type="button" class="hb" data-act="close">閉じる</button><span class="note" id="cmsg" role="status"></span></div>
+ <p class="note noprint">${kind === 'letter' ? '氏名・生年月日など（　）の部分は、院内の様式に貼り付けてから記入してください。傷病名と経過は入力内容から自動で作った文案です。送る前に必ず読み直してください。' : '（記入）の部分は貼り付け後に書き足してください。'}</p>`);
 }
 function showCode() {
  open(`<h3>心停止・窒息のときは</h3>
@@ -354,6 +426,8 @@ function showSettings() {
  <div class="lab">日中にできる検査</div><div class="opts">${['s', 'b', 'e', 'x', 'c'].map(k => row('day', k)).join('')}</div>
  <div class="lab">夜間にできる検査</div><div class="opts">${['s', 'b', 'e', 'x', 'c'].map(k => row('night', k)).join('')}</div>
  <p class="note">夜間に心電図が取れる場合などは、ここで切り替えてください。設定はこの端末に保存されます。</p>
+ <div class="lab">紹介元の情報（紹介状に入ります）</div>
+ ${[['name', '病院名'], ['addr', '住所'], ['tel', '電話'], ['fax', 'FAX']].map(([k, l]) => `<div class="fld"><label class="lab" for="fac_${k}">${l}</label><input id="fac_${k}" data-fac="${k}" value="${esc((DB.fac || {})[k])}"></div>`).join('')}
  <div class="rowbtns"><button type="button" class="hb" data-act="close">閉じる</button></div>`);
 }
 function showEps() {
@@ -401,11 +475,13 @@ document.addEventListener('click', ev => {
   case 'openEp': load(DB.eps[d.id]); save(); close(); render(); break;
   case 'delEp': if (delArm !== d.id) { delArm = d.id; showEps(); break; } delete DB.eps[d.id]; delArm = null; if (E.id === d.id) { const r = Object.values(DB.eps); load(r[0] || sample()); render(); } save(); showEps(); break;
   case 'close': close(); break;
+  case 'print': try { window.print(); } catch (e) { const m = $('#cmsg'); if (m) m.textContent = 'この画面では印刷できません。コピーして院内の様式に貼り付けてください'; } break;
   case 'copy': { const t = $('#outText'), m = $('#cmsg'); try { navigator.clipboard.writeText(t.value).then(() => m.textContent = 'コピーしました', () => { t.select(); m.textContent = '全文を選択しました。長押しでコピーしてください'; }); } catch (e) { t.select(); m.textContent = '全文を選択しました。長押しでコピーしてください'; } break; }
  }
 });
 document.addEventListener('input', ev => {
  const t = ev.target, d = t.dataset;
+ if (d.fac) { DB.fac = DB.fac || {}; DB.fac[d.fac] = t.value; save(); return; }
  if (d.in) { setP(d.in, t.value); changed(false); }
  else if (d.vin) { const [i, k] = d.vin.split(':'); E.vit[i][k] = t.value; changed(false); }
 });

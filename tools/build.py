@@ -331,6 +331,61 @@ rf = (f'="【診療情報提供（急変時の転院依頼）】"&CHAR(10)&"患�
       f'&CHAR(10)&CHAR(10)&"■ 本人・家族の意向："&{P["cpr"]}&"／"&{P["wish"]}&"　キーパーソン："&{P["kp"]}&CHAR(10)&"■ 当院の判断："&IF({P["choice"]}="",{R["dec"]},{P["choice"]})&CHAR(10)&"■ 当院の連絡先：（記入）　担当医："&{P["by"]}')
 out(M, out_rows['ref'], rf, bold=False)
 
+# ================= 紹介状 =================
+K = wb.create_sheet('紹介状'); dvk = DV(K)
+setw(K, {'A': 22, 'B': 70})
+K['A1'] = '紹介状（診療情報提供書）'; K['A1'].font = ft(size=15, bold=True, color=ACC); K.merge_cells('A1:B1')
+K['A2'] = '黄色を入力すると、急変シートと症候シートの内容から本文を自動で作ります。氏名・生年月日は院内の様式に貼り付けてから記入してください。'; K['A2'].font = ft(size=9, color='596579'); K.merge_cells('A2:B2'); K['A2'].alignment = WRAP
+KR = {}; r = 4
+PURP = ['精査・加療のお願い', '救急での診察・加療のお願い', '入院加療のお願い', '外来受診のお願い']
+for lab, key, opts in [('紹介先の医療機関', 'to', None), ('診療科', 'dept', None), ('担当医（空欄なら「ご担当」）', 'doc', None), ('紹介の目的', 'purpose', PURP),
+                       ('傷病名（空欄なら鑑別の「可能性高い」から自動）', 'dx', None), ('その他の連絡事項', 'extra', None),
+                       ('紹介元：病院名', 'fname', None), ('紹介元：住所', 'faddr', None), ('紹介元：電話', 'ftel', None), ('紹介元：FAX', 'ffax', None)]:
+    K.cell(r, 1, lab).font = ft(bold=True); K.cell(r, 1).alignment = WRAP; inp(K, f'B{r}')
+    if opts: dvk.add(opts, f'B{r}'); K[f'B{r}'] = opts[0]
+    if key in ('dx', 'extra'): K.row_dimensions[r].height = 36
+    KR[key] = f'$B${r}'; r += 1
+r += 1
+K.cell(r, 1, '紹介状（このセルをコピー）').font = ft(bold=True); K.cell(r, 1).alignment = WRAP
+Mq = lambda ref: f"'{MAIN}'!" + ref
+P2 = {k: Mq(v) for k, v in R.items() if isinstance(v, str) and v.startswith('$')}
+M['Y15'] = (f'=IF(M{v0}="","","体温"&J{v0}&"℃、心拍"&I{v0}&"/分、血圧"&G{v0}&"/"&H{v0}&"mmHg、呼吸数"&B{v0}&"/分、SpO2 "&C{v0}&"%（"&IF(D{v0}="酸素","酸素"&E{v0}&"L投与下","室内気")&"）、意識 "&MID(K{v0},3,20)&"（NEWS2 "&M{v0}&"点）")')
+M['Y16'] = (f'=IF({LR}=0,"","体温"&{ix("J")}&"℃、心拍"&{ix("I")}&"/分、血圧"&{ix("G")}&"/"&{ix("H")}&"mmHg、呼吸数"&{ix("B")}&"/分、SpO2 "&{ix("C")}&"%（"&IF({ix("D")}="酸素","酸素"&{ix("E")}&"L投与下","室内気")&"）、意識 "&MID({ix("K")},3,20)&"（NEWS2 "&{ix("M")}&"点）")')
+M['Y17'] = f'=IF(OR(A{v0}="",{LR}=ROW(A{v0})),"",TEXT(INDEX($A:$A,{LR}),"m月d日h時mm分"))'
+dxauto = f'IF({Mq("$Y$9")}="",{Mq("$Y$4")},SUBSTITUTE({Mq("$Y$9")},"、","の疑い"&CHAR(10)&"　")&"の疑い")'
+pur = f'CHOOSE(MATCH(\'紹介状\'!{KR["purpose"]},{{"精査・加療のお願い","救急での診察・加療のお願い","入院加療のお願い","外来受診のお願い"}},0),"ご精査・ご加療","救急でのご診察・ご加療","入院でのご加療","外来でのご診察")'
+needsTxt = f"_xlfn.TEXTJOIN(\"、\",TRUE,{','.join(Mq(f'$B${i}') if False else f'IF({Mq(chr(36)+chr(65)+chr(36)+str(i))}=\"✓\",{Mq(chr(36)+chr(66)+chr(36)+str(i))},\"\")' for i in range(n0, n0 + len(D['NEEDS'])))})"
+M['Y18'] = '=' + needsTxt
+narr = (f'IF({Mq("$A$" + str(v0))}="","",TEXT({Mq("$A$" + str(v0))},"m月d日h時mm分")&"頃より、")&IF({Mq("$Y$4")}="","身体症状",{Mq("$Y$4")})&"を認めました。"'
+        f'&IF({Mq("$Y$6")}="","","所見として、"&{Mq("$Y$6")}&"がみられます。")'
+        f'&IF({Mq("$Y$15")}="","","バイタルサインは"&{Mq("$Y$15")}&IF({Mq("$Y$17")}="","でした。","でしたが、"&{Mq("$Y$17")}&"には"&{Mq("$Y$16")}&"となっています。"))'
+        f'&IF({Mq("$Y$7")}="","","また、"&{Mq("$Y$7")}&"を認めます。")'
+        f'&IF({Mq("$Y$2")}="","","検査では"&{Mq("$Y$2")}&"を認めました。")'
+        f'&IF({Mq("$Y$9")}="","",{Mq("$Y$9")}&"を疑っております。")'
+        f'&_xlfn.TEXTJOIN("、",TRUE,IF(AND({Mq(R["mode"])}="夜間",{Mq("$Y$14")}<>""),"夜間のため当院では"&{Mq("$Y$14")}&"が実施できず",""),IF({Mq("$Y$18")}="","",{Mq("$Y$18")}&"が必要と考えられ"))'
+        f'&IF(OR(AND({Mq(R["mode"])}="夜間",{Mq("$Y$14")}<>""),{Mq("$Y$18")}<>""),"、","")&"貴院にて"&{pur}&"をお願いしたく、ご紹介申し上げます。"')
+M['Y19'] = '=' + narr
+P = {k: Mq(v) for k, v in R.items() if isinstance(v, str) and v.startswith('$B$')}
+lt = (f'="診療情報提供書（紹介状）"&CHAR(10)&CHAR(10)&"　　　　　　　　　　　　　　　　"&TEXT(TODAY(),"yyyy年m月d日")'
+      f'&CHAR(10)&IF({KR["to"]}="","（紹介先医療機関）",{KR["to"]})&CHAR(10)&IF({KR["dept"]}="","",{KR["dept"]}&"　")&IF({KR["doc"]}="","ご担当",{KR["doc"]})&" 先生　御侍史"'
+      f'&CHAR(10)&CHAR(10)&"紹介元："&IF({KR["fname"]}="","（医療機関名）",{KR["fname"]})&IF({KR["faddr"]}="","",CHAR(10)&"　　　　"&{KR["faddr"]})&CHAR(10)&"　　　　電話 "&{KR["ftel"]}&IF({KR["ffax"]}="","","　FAX "&{KR["ffax"]})&CHAR(10)&"　　　　医師 "&{P["by"]}'
+      f'&CHAR(10)&CHAR(10)&"患者：（氏名）　"&{P["age"]}&"歳　"&{P["sex"]}&"　（生年月日）　当院ID："&{P["id"]}'
+      f'&CHAR(10)&CHAR(10)&"傷病名："&CHAR(10)&"　"&IF({KR["dx"]}="",{dxauto},{KR["dx"]})&IF({P["dx"]}="","",CHAR(10)&"　（基礎疾患）"&{P["dx"]})&CHAR(10)&"紹介目的："&{KR["purpose"]}'
+      f'&CHAR(10)&CHAR(10)&"拝啓　平素より大変お世話になっております。"&CHAR(10)&"当院に"&IF({P["adm"]}="","入院中",{P["adm"]}&"中")&"の患者様について、ご紹介申し上げます。"'
+      f'&CHAR(10)&CHAR(10)&"【経過】"&CHAR(10)&{Mq("$Y$19")}'
+      f'&CHAR(10)&CHAR(10)&"【バイタルの推移】"&CHAR(10)&{Mq("$Y$13")}'
+      f'&IF({Mq("$Y$3")}&{P["img"]}="","",CHAR(10)&CHAR(10)&"【検査所見】"&CHAR(10)&_xlfn.TEXTJOIN(CHAR(10),TRUE,{Mq("$Y$3")},{P["img"]}))'
+      f'&IF({P["acts"]}="","",CHAR(10)&CHAR(10)&"【当院での処置】"&CHAR(10)&{P["acts"]})'
+      f'&CHAR(10)&CHAR(10)&"【既往歴・身体の状態】"&CHAR(10)&IF({P["st"]}="","特記なし",{P["st"]})&IF({P["base"]}="","",CHAR(10)&"普段の状態："&{P["base"]})'
+      f'&CHAR(10)&CHAR(10)&"【精神科的な情報】"&CHAR(10)&"診断："&{P["dx"]}&IF({P["adm"]}="","","（"&{P["adm"]}&"）")&IF({P["psy"]}="","",CHAR(10)&"留意点："&{P["psy"]})'
+      f'&CHAR(10)&CHAR(10)&"【現在の処方】"&CHAR(10)&IF({P["medsText"]}="","別紙のとおり",{P["medsText"]})'
+      f'&CHAR(10)&CHAR(10)&"【ご本人・ご家族の意向】"&CHAR(10)&_xlfn.TEXTJOIN("。",TRUE,{P["cpr"]},{P["wish"]})&IF({P["kp"]}="","",CHAR(10)&"キーパーソン："&{P["kp"]})'
+      f'&IF({P["family"]}&{KR["extra"]}="","",CHAR(10)&CHAR(10)&"【連絡事項】"&CHAR(10)&_xlfn.TEXTJOIN(CHAR(10),TRUE,{P["family"]},{KR["extra"]}))'
+      f'&CHAR(10)&CHAR(10)&"お忙しいところ恐縮ですが、ご高診のほどよろしくお願い申し上げます。"&CHAR(10)&"　　　　　　　　　　　　　　　　　　　　　　　　敬具"'
+      f'&CHAR(10)&CHAR(10)&"（精神症状や入院形態に関するご質問、加療後の受け入れについては、当院までご連絡ください）"')
+out(K, f'B{r}', lt, bold=False); K.row_dimensions[r].height = 600
+r += 1; K.cell(r, 2, '傷病名と経過は入力内容から自動で作った文案です。送る前に必ず読み直してください。').font = ft(size=8, color='596579')
+
 # ================= 使い方 =================
 setw(USE, {'A': 3, 'B': 24, 'C': 70})
 USE['B1'] = '精神科病棟 身体急変サポート（Excel版）'; USE['B1'].font = ft(size=16, bold=True, color=ACC)
@@ -355,11 +410,11 @@ for a, b in rows:
         USE.row_dimensions[r].height = max(18, 15 * (1 + len(b) // 46))
     r += 1
 r += 1; USE.cell(r, 2, 'シート一覧').font = ft(bold=True, color=ACC); r += 1
-for n in [MAIN] + [SHORT[s['k']] for s in D['SYMS']]:
+for n in [MAIN, '紹介状'] + [SHORT[s['k']] for s in D['SYMS']]:
     c = USE.cell(r, 2, n); c.hyperlink = f"#'{n}'!A1"; c.font = ft(color=ACC, underline='single'); r += 1
 
 LIST.sheet_state = 'hidden'
-wb._sheets = [USE, M] + [wb[SHORT[s['k']]] for s in D['SYMS']] + [LIST]
+wb._sheets = [USE, M, wb['紹介状']] + [wb[SHORT[s['k']]] for s in D['SYMS']] + [LIST]
 wb.active = 1
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
 wb.save(OUT); print('saved', OUT)

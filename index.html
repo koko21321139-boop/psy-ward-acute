@@ -112,6 +112,8 @@ nav.bottom button:disabled{opacity:.4}
 .ep{display:flex;gap:8px;align-items:center;border-bottom:1px solid var(--line);padding:8px 0}
 .ep .nm{flex:1;min-width:0}.ep small{display:block;color:var(--muted);font-size:12px}
 footer{font-size:12px;color:var(--muted);line-height:1.6}
+.letter{display:none}
+@media print{header,main,nav.bottom,.noprint,textarea.out{display:none!important}.modal{position:static;background:none;display:block}.panel{max-height:none;overflow:visible;padding:0;border-radius:0;max-width:none}.letter{display:block;white-space:pre-wrap;font-family:var(--serif);font-size:10.5pt;line-height:1.7;color:#000}}
 @media (prefers-reduced-motion:no-preference){.opt,.st{transition:background-color .12s,color .12s}}
 </style>
 </head>

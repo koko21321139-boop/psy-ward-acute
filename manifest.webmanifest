@@ -1,0 +1,16 @@
+{
+  "name": "精神科病棟 身体急変サポート",
+  "short_name": "急変サポート",
+  "description": "精神科病棟での身体急変時に、NEWS2・症候別のレッドフラッグ・夜間の判断から搬送か院内継続かの判断を補助する",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#eef1f5",
+  "theme_color": "#23395b",
+  "icons": [
+    {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png"},
+    {"src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}
